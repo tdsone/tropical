@@ -37,6 +37,24 @@ uv run tropical generate --checkpoint ./checkpoints/stage3_step50000.pt --protei
 
 Run `uv run tropical --help` for full CLI options.
 
+### Training on Modal (GPU)
+
+Requires `modal` (in dev dependencies: `uv sync --group dev`).
+
+```bash
+# Upload local data/ to the Modal volume
+modal run upload_data_modal.py
+
+# Train a single stage on an A100-80GB
+modal run train_modal.py --stage 1 --max-steps 50000
+
+# Chain stages manually
+modal run train_modal.py --stage 2 --resume-from /checkpoints/stage1_step50000.pt
+modal run train_modal.py --stage 3 --resume-from /checkpoints/stage2_step50000.pt
+```
+
+Data and checkpoints are persisted on Modal volumes (`tropical-data` and `tropical-checkpoints`), so checkpoint paths use `/data` and `/checkpoints` (the volume mount points).
+
 ## Background
 
 - What are known cases where sequence drives cell-type specificity?
