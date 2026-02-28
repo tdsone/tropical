@@ -1,15 +1,43 @@
-# tropical
-tropical is an amalgamate of ML models to optimize RNA sequences for high tissue specificity
+# Tropical
 
-## Ideas
-- You need cell type specific expression for your medication to be safe.
-    - Especially important to avoid off-target expression.
-    - Q1: what are common off-target cell types where LNPs go? 
-        - LNPs often accumulated in the liver (?) (Source?) 
-        - NewLimit has three programs: metabolism with hepatocytes, vascular with endothelial cells and immunology with T cells (any or CD8+/CD4+/T reg/...)
+Autoregressive mRNA language model conditioned on protein sequence and translation efficiency (TE).
 
+Given a protein sequence and optional per-cell-type TE targets, Tropical generates an mRNA coding sequence optimized for those conditions. The architecture is a causal transformer decoder with cross-attention to a bidirectional protein encoder and adaptive layer normalization (adaLN) driven by a TE conditioner.
 
-# Background
+## Architecture
+
+- **Decoder** — 8-layer causal transformer (512-dim, 8 heads) with sinusoidal positional embeddings. Each block has self-attention, cross-attention, and FFN sub-blocks, all gated by adaLN.
+- **Protein encoder** — 4-layer bidirectional transformer over amino acid tokens (vocab 25). Output is cross-attended by the decoder.
+- **TE conditioner** — Small MLP mapping 78 cell-type TE values (+ presence mask) to per-layer adaLN scale/shift parameters. Zero-initialized so conditioning starts as identity.
+- **Tokenizers** — Lookup-table tokenizers for nucleotides (vocab 8: PAD, BOS, EOS, A, C, G, T, U) and amino acids (vocab 25: 20 standard + X/special tokens).
+
+## Training stages
+
+Training uses a 3-stage curriculum with progressive unfreezing:
+
+1. **Stage 1** — mRNA language modeling only. Protein encoder, TE conditioner, and cross-attention are frozen.
+2. **Stage 2** — Unfreeze protein encoder and cross-attention. TE conditioner stays frozen.
+3. **Stage 3** — All parameters trainable.
+
+## Usage
+
+```bash
+# Install
+uv sync
+
+# Train a single stage
+uv run tropical train --stage 1 --max-steps 50000
+
+# Train all 3 stages (auto-chains checkpoints)
+uv run tropical train-all --max-steps 50000
+
+# Generate a sequence conditioned on a protein
+uv run tropical generate --checkpoint ./checkpoints/stage3_step50000.pt --protein MVKLT
+```
+
+Run `uv run tropical --help` for full CLI options.
+
+## Background
 
 - What are known cases where sequence drives cell-type specificity?
     - In the liver, a specific micro-RNA called miRNA-122 is highly abundant. By incorporating the "reverse complement" of its sequence into the 3’ UTR of your payload mRNA, miRNA-122 will bind to the payload and trigger its rapid degradation. Because dendritic cells lack miRNA-122, the mRNA remains stable and produces high protein levels there, while remaining virtually silent in the liver where miRNA-122 is abundant. https://en.wikipedia.org/wiki/MiR-122
