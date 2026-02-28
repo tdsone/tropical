@@ -1,0 +1,33 @@
+[project]
+name = "tropical"
+version = "0.1.0"
+description = "Autoregressive mRNA language model conditioned on protein and translation efficiency"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "ipykernel>=7.2.0",
+    "matplotlib>=3.10.8",
+    "numpy>=2.0.0",
+    "openpyxl>=3.1.5",
+    "pandas>=3.0.1",
+    "pyarrow>=19.0.0",
+    "pybiomart>=0.2.0",
+    "requests>=2.32.0",
+    "torch>=2.10.0",
+    "typer>=0.15.0",
+]
+
+[project.scripts]
+tropical = "tropical.cli:app"
+
+[project.optional-dependencies]
+dev = [
+    "modal>=0.73.0",
+]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["tropical*"]
