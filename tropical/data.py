@@ -88,41 +88,6 @@ class TranscriptDataset(Dataset):
         data_dir = Path(config.data_dir)
         records: list[dict] = []
 
-        # --- Synthetic shards (stages 1, 2, 3) ---
-        sim_dir = data_dir / "processed" / "simulated_training_v1"
-        shard_paths = sorted(glob.glob(str(sim_dir / "simulated_training_part_*.csv.gz")))
-        for path in shard_paths:
-            df = pd.read_csv(path)
-            for _, row in df.iterrows():
-                rec: dict = {
-                    "transcript": str(row["full_transcript_sequence"]),
-                    "protein": None,
-                    "te_values": None,
-                }
-                # Stage 2+: include protein if available
-                if config.stage >= 2:
-                    prot = row.get("encoded_protein_sequence")
-                    if pd.notna(prot) and str(prot).strip():
-                        rec["protein"] = str(prot)
-
-                # Synthetic data has 2 TE columns (hepatocyte, tcell) — map to first 2 slots
-                # Only used in stage 3
-                if config.stage >= 3:
-                    te_vals = np.zeros(config.n_te_conditions, dtype=np.float32)
-                    te_mask = np.zeros(config.n_te_conditions, dtype=np.float32)
-                    # Map simulated TE to arbitrary slots for pretraining
-                    for col_idx, col_name in enumerate(
-                        ["translation_efficiency_hepatocyte", "translation_efficiency_tcell"]
-                    ):
-                        val = row.get(col_name)
-                        if pd.notna(val):
-                            te_vals[col_idx] = float(val)
-                            te_mask[col_idx] = 1.0
-                    rec["te_values"] = te_vals
-                    rec["te_mask"] = te_mask
-
-                records.append(rec)
-
         # --- Ensembl parquet (stages 1, 2, 3) ---
         ensembl_path = data_dir / "raw" / "ensembl_transcripts_homo_sapiens.parquet"
         if ensembl_path.exists():
