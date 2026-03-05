@@ -65,6 +65,10 @@ class TropicalConfig:
     checkpoint_dir: str = "./checkpoints"
     resume_from: str | None = None
 
+    # Weights & Biases
+    wandb_project: str = "tropical"
+    wandb_enabled: bool = False
+
     @property
     def emb_dim(self) -> int:
         return self.n_heads * self.head_dim

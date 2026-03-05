@@ -38,9 +38,15 @@ def _freeze_for_stage(model: Tropical, stage: int) -> None:
     if stage == 1:
         # Freeze protein encoder, TE conditioner, cross-attention, adaLN for cross-attention
         for name, param in model.named_parameters():
-            if any(k in name for k in [
-                "protein_encoder", "te_conditioner", "cross_attn", "adaln_ca",
-            ]):
+            if any(
+                k in name
+                for k in [
+                    "protein_encoder",
+                    "te_conditioner",
+                    "cross_attn",
+                    "adaln_ca",
+                ]
+            ):
                 param.requires_grad = False
     elif stage == 2:
         # Freeze TE conditioner only
@@ -90,7 +96,9 @@ def _evaluate(
             te_mask=batch["te_mask"],
         )
         loss = nn.functional.cross_entropy(
-            logits.view(-1, logits.size(-1)), batch["labels"].view(-1), ignore_index=-100
+            logits.view(-1, logits.size(-1)),
+            batch["labels"].view(-1),
+            ignore_index=-100,
         )
         total_loss += loss.item()
         n += 1
@@ -103,10 +111,18 @@ def train(config: TropicalConfig) -> None:
     print(f"Device: {device}")
     print(f"Stage: {config.stage}")
 
+    if config.wandb_enabled:
+        import wandb
+
+        wandb.init(
+            project=config.wandb_project,
+            name=f"stage{config.stage}",
+            config=vars(config),
+        )
+
     # Build model
     model = Tropical(config).to(device)
     total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Total parameters: {total_params:,}")
 
     # Resume from checkpoint
@@ -119,6 +135,11 @@ def train(config: TropicalConfig) -> None:
     _freeze_for_stage(model, config.stage)
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Trainable parameters: {trainable_params:,}")
+    if config.wandb_enabled:
+        wandb.config.update(
+            {"total_params": total_params, "trainable_params": trainable_params},
+            allow_val_change=True,
+        )
 
     # Dataset + dataloader
     train_dataset = TranscriptDataset(config, split="train")
@@ -144,20 +165,35 @@ def train(config: TropicalConfig) -> None:
 
     # Optimizer
     param_groups = [
-        {"params": [p for p in model.parameters() if p.requires_grad and p.dim() >= 2],
-         "weight_decay": config.weight_decay},
-        {"params": [p for p in model.parameters() if p.requires_grad and p.dim() < 2],
-         "weight_decay": 0.0},
+        {
+            "params": [
+                p for p in model.parameters() if p.requires_grad and p.dim() >= 2
+            ],
+            "weight_decay": config.weight_decay,
+        },
+        {
+            "params": [
+                p for p in model.parameters() if p.requires_grad and p.dim() < 2
+            ],
+            "weight_decay": 0.0,
+        },
     ]
-    optimizer = torch.optim.AdamW(param_groups, lr=config.learning_rate, betas=(0.9, 0.95))
+    optimizer = torch.optim.AdamW(
+        param_groups, lr=config.learning_rate, betas=(0.9, 0.95)
+    )
 
-    # Resume optimizer state
+    # Resume optimizer state (only when resuming within the same stage)
     start_step = 0
     if config.resume_from:
-        if "optimizer_state_dict" in ckpt:
+        same_stage = ckpt.get("stage") == config.stage
+        if same_stage and "optimizer_state_dict" in ckpt:
             optimizer.load_state_dict(ckpt["optimizer_state_dict"])
-        start_step = ckpt.get("step", 0)
-        print(f"Resuming from step {start_step}")
+            start_step = ckpt.get("step", 0)
+            print(f"Resuming from step {start_step}")
+        else:
+            print(
+                f"Loaded weights from stage {ckpt.get('stage')} — starting stage {config.stage} from step 0"
+            )
 
     # Training loop
     model.train()
@@ -188,7 +224,9 @@ def train(config: TropicalConfig) -> None:
             te_mask=batch["te_mask"],
         )
         loss = nn.functional.cross_entropy(
-            logits.view(-1, logits.size(-1)), batch["labels"].view(-1), ignore_index=-100
+            logits.view(-1, logits.size(-1)),
+            batch["labels"].view(-1),
+            ignore_index=-100,
         )
 
         # Backward
@@ -200,13 +238,38 @@ def train(config: TropicalConfig) -> None:
         # Logging
         if step % config.log_interval == 0:
             dt = time.time() - t0
-            print(f"step {step:>6d} | loss {loss.item():.4f} | lr {lr:.2e} | {dt:.1f}s")
+            tokens_per_sec = (
+                config.batch_size * config.block_size * config.log_interval / dt
+                if dt > 0
+                else 0
+            )
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), float("inf"))
+            print(
+                f"step {step:>6d} | loss {loss.item():.4f} | lr {lr:.2e} | {tokens_per_sec:.0f} tok/s | {dt:.1f}s"
+            )
+            if config.wandb_enabled:
+                metrics = {
+                    "train/loss": loss.item(),
+                    "train/lr": lr,
+                    "train/grad_norm": grad_norm.item(),
+                    "perf/tokens_per_sec": tokens_per_sec,
+                }
+                if device.type == "cuda":
+                    metrics["perf/gpu_mem_allocated_gb"] = (
+                        torch.cuda.memory_allocated() / 1e9
+                    )
+                    metrics["perf/gpu_mem_reserved_gb"] = (
+                        torch.cuda.memory_reserved() / 1e9
+                    )
+                wandb.log(metrics, step=step)
             t0 = time.time()
 
         # Evaluation
         if step > 0 and step % config.eval_interval == 0:
             val_loss = _evaluate(model, val_loader, device)
             print(f"step {step:>6d} | val_loss {val_loss:.4f}")
+            if config.wandb_enabled:
+                wandb.log({"val/loss": val_loss}, step=step)
 
         # Save checkpoint
         if step > 0 and step % config.save_interval == 0:
@@ -214,6 +277,8 @@ def train(config: TropicalConfig) -> None:
 
     # Final save
     _save_checkpoint(model, optimizer, config.max_steps, config)
+    if config.wandb_enabled:
+        wandb.finish()
     print("Training complete.")
 
 

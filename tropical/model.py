@@ -13,6 +13,7 @@ from tropical.config import TropicalConfig
 # Attention modules
 # ---------------------------------------------------------------------------
 
+
 class CausalSelfAttention(nn.Module):
     """Multi-head causal self-attention with fused QKV projection."""
 
@@ -34,7 +35,10 @@ class CausalSelfAttention(nn.Module):
         v = v.unflatten(-1, (self.n_heads, self.head_dim)).transpose(1, 2)
 
         attn = F.scaled_dot_product_attention(
-            q, k, v, is_causal=True,
+            q,
+            k,
+            v,
+            is_causal=True,
             dropout_p=self.dropout if self.training else 0.0,
         )
         out = attn.transpose(1, 2).flatten(-2)  # (B, T, C)
@@ -82,7 +86,10 @@ class CrossAttention(nn.Module):
             attn_mask = attn_mask.expand(B, self.n_heads, T, S)
 
         attn = F.scaled_dot_product_attention(
-            q, k, v, attn_mask=attn_mask,
+            q,
+            k,
+            v,
+            attn_mask=attn_mask,
             dropout_p=self.dropout if self.training else 0.0,
         )
         # When all context positions are masked, softmax produces NaN.
@@ -95,6 +102,7 @@ class CrossAttention(nn.Module):
 # ---------------------------------------------------------------------------
 # Feed-forward network
 # ---------------------------------------------------------------------------
+
 
 class FFN(nn.Module):
     """Position-wise feed-forward with GELU and 4x expansion."""
@@ -112,6 +120,7 @@ class FFN(nn.Module):
 # ---------------------------------------------------------------------------
 # Adaptive Layer Norm + TE Conditioner
 # ---------------------------------------------------------------------------
+
 
 class AdaLN(nn.Module):
     """Adaptive Layer Normalization: LN(x) * gamma + beta."""
@@ -140,9 +149,7 @@ class TEConditioner(nn.Module):
     That's n_layers * 3 sub-blocks * 2 (gamma, beta) * emb_dim parameters.
     """
 
-    def __init__(
-        self, n_te_conditions: int, emb_dim: int, n_layers: int
-    ) -> None:
+    def __init__(self, n_te_conditions: int, emb_dim: int, n_layers: int) -> None:
         super().__init__()
         self.n_layers = n_layers
         self.emb_dim = emb_dim
@@ -161,9 +168,7 @@ class TEConditioner(nn.Module):
         nn.init.zeros_(self.mlp[-1].weight)
         nn.init.zeros_(self.mlp[-1].bias)
 
-    def forward(
-        self, te_values: torch.Tensor, te_mask: torch.Tensor
-    ) -> torch.Tensor:
+    def forward(self, te_values: torch.Tensor, te_mask: torch.Tensor) -> torch.Tensor:
         """
         Args:
             te_values: (B, 78) — translation efficiency values
@@ -184,6 +189,7 @@ class TEConditioner(nn.Module):
 # Protein Encoder
 # ---------------------------------------------------------------------------
 
+
 class ProteinEncoderBlock(nn.Module):
     """Bidirectional transformer block for protein encoder."""
 
@@ -191,7 +197,10 @@ class ProteinEncoderBlock(nn.Module):
         super().__init__()
         self.ln1 = nn.LayerNorm(emb_dim)
         self.attn = nn.MultiheadAttention(
-            emb_dim, n_heads, dropout=dropout, batch_first=True,
+            emb_dim,
+            n_heads,
+            dropout=dropout,
+            batch_first=True,
         )
         self.ln2 = nn.LayerNorm(emb_dim)
         self.ffn = FFN(emb_dim, dropout)
@@ -249,6 +258,7 @@ class ProteinEncoder(nn.Module):
 # ---------------------------------------------------------------------------
 # Decoder Transformer Block
 # ---------------------------------------------------------------------------
+
 
 class TransformerBlock(nn.Module):
     """Decoder block: AdaLN → self-attn, AdaLN → cross-attn, AdaLN → FFN."""
@@ -313,6 +323,7 @@ class TransformerBlock(nn.Module):
 # ---------------------------------------------------------------------------
 # Top-level model
 # ---------------------------------------------------------------------------
+
 
 class Tropical(nn.Module):
     """Autoregressive mRNA language model conditioned on protein (cross-attention)
@@ -401,9 +412,8 @@ class Tropical(nn.Module):
 
         # Encode protein context (skip when entire batch is padding)
         protein_ctx = None
-        has_protein = (
-            protein_ids is not None
-            and (protein_pad_mask is None or not protein_pad_mask.all())
+        has_protein = protein_ids is not None and (
+            protein_pad_mask is None or not protein_pad_mask.all()
         )
         if has_protein:
             protein_ctx = self.protein_encoder(protein_ids, pad_mask=protein_pad_mask)

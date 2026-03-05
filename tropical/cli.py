@@ -29,6 +29,7 @@ def train(
     max_steps: Annotated[int, typer.Option(help="Maximum training steps")] = 100_000,
     batch_size: Annotated[int, typer.Option(help="Batch size")] = 32,
     learning_rate: Annotated[float, typer.Option(help="Learning rate")] = 3e-4,
+    wandb: Annotated[bool, typer.Option("--wandb/--no-wandb", help="Enable Weights & Biases logging")] = False,
 ) -> None:
     """Run a single training stage."""
     from tropical.config import TropicalConfig
@@ -45,6 +46,7 @@ def train(
         max_steps=max_steps,
         batch_size=batch_size,
         learning_rate=learning_rate,
+        wandb_enabled=wandb,
     )
     run_train(config)
 
@@ -56,6 +58,7 @@ def train_all(
     max_steps: Annotated[int, typer.Option(help="Maximum training steps per stage")] = 100_000,
     batch_size: Annotated[int, typer.Option(help="Batch size")] = 32,
     learning_rate: Annotated[float, typer.Option(help="Learning rate")] = 3e-4,
+    wandb: Annotated[bool, typer.Option("--wandb/--no-wandb", help="Enable Weights & Biases logging")] = False,
 ) -> None:
     """Run all 3 training stages sequentially, auto-chaining checkpoints."""
     from tropical.config import TropicalConfig
@@ -75,6 +78,7 @@ def train_all(
             max_steps=max_steps,
             batch_size=batch_size,
             learning_rate=learning_rate,
+            wandb_enabled=wandb,
         )
         print(f"\n{'='*60}")
         print(f"  Stage {stage}")
