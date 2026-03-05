@@ -2,6 +2,8 @@
 
 Autoregressive mRNA language model conditioned on protein sequence and translation efficiency (TE).
 
+Blog post: https://tsone.notion.site/Autoregressively-generate-cell-type-specific-mRNAs-for-better-vaccines-with-tropical-2e5243755b3f80f1a769e11ef4c3d37b
+
 Given a protein sequence and optional per-cell-type TE targets, Tropical generates an mRNA coding sequence optimized for those conditions. The architecture is a causal transformer decoder with cross-attention to a bidirectional protein encoder and adaptive layer normalization (adaLN) driven by a TE conditioner.
 
 ## Architecture
