@@ -19,6 +19,12 @@ Training uses a 3-stage curriculum with progressive unfreezing:
 2. **Stage 2** — Unfreeze protein encoder and cross-attention. TE conditioner stays frozen.
 3. **Stage 3** — All parameters trainable.
 
+## Pretrained weights
+
+Pretrained checkpoints are available on HuggingFace: https://huggingface.co/tdsone/tropical/tree/main
+
+Download a checkpoint and pass it to `--checkpoint` when generating.
+
 ## Usage
 
 ```bash
@@ -36,6 +42,34 @@ uv run tropical generate --checkpoint ./checkpoints/stage3_step50000.pt --protei
 ```
 
 Run `uv run tropical --help` for full CLI options.
+
+### Running the frontend
+
+The frontend is a React app that talks to the Modal backend.
+
+**1. Start the Modal backend:**
+
+```bash
+# Requires modal (in dev dependencies: uv sync --extra dev)
+# Place a checkpoint in the tropical-checkpoints Modal volume first (see Training on Modal below),
+# or upload a local checkpoint:
+modal volume put tropical-checkpoints stage3_step50000.pt /stage3_step50000.pt
+
+# Serve the backend (keeps running until interrupted)
+uv run modal serve serve_modal.py
+```
+
+This prints a set of endpoint URLs. Copy the base URL (e.g. `https://your-app--...modal.run`).
+
+**2. Start the frontend dev server:**
+
+```bash
+cd frontend
+npm install
+VITE_API_URL=https://your-app--...modal.run npm run dev
+```
+
+Open http://localhost:5173 in your browser.
 
 ### Training on Modal (GPU)
 
