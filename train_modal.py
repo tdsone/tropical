@@ -30,8 +30,25 @@ def train_remote(
     resume_from: str | None = None,
     max_steps: int = 100_000,
 ):
+    from pathlib import Path
+
     from tropical.config import TropicalConfig
     from tropical.train import train
+
+    # Auto-find latest checkpoint from the current or previous stage
+    if resume_from is None and stage > 1:
+        # First try resuming within the same stage (interrupted run)
+        for s in (stage, stage - 1):
+            pattern = f"stage{s}_step*.pt"
+            matches = sorted(Path("/checkpoints").glob(pattern))
+            if matches:
+                resume_from = str(matches[-1])
+                print(f"Auto-resuming from checkpoint: {resume_from}")
+                break
+        if resume_from is None:
+            raise FileNotFoundError(
+                f"No stage {stage} or stage {stage - 1} checkpoints found in /checkpoints"
+            )
 
     config = TropicalConfig(
         stage=stage,
@@ -54,40 +71,13 @@ def train_remote(
     volumes={"/data": data_vol, "/checkpoints": ckpt_vol},
     secrets=[modal.Secret.from_name("custom-secret")],
 )
-def train_all_remote(max_steps: int = 100_000):
+def find_latest_checkpoint(stage: int) -> str | None:
+    """Find the latest checkpoint for a given stage on the volume."""
     from pathlib import Path
 
-    from tropical.config import TropicalConfig
-    from tropical.train import train
-
-    for stage in (1, 2, 3):
-        resume_from = None
-        if stage > 1:
-            pattern = f"stage{stage - 1}_step*.pt"
-            matches = sorted(Path("/checkpoints").glob(pattern))
-            if not matches:
-                raise FileNotFoundError(
-                    f"No stage {stage - 1} checkpoints found in /checkpoints"
-                )
-            resume_from = str(matches[-1])
-            print(f"Chaining from checkpoint: {resume_from}")
-
-        print(f"\n{'=' * 60}")
-        print(f"  Stage {stage}")
-        print(f"{'=' * 60}\n")
-
-        config = TropicalConfig(
-            stage=stage,
-            data_dir="/data",
-            checkpoint_dir="/checkpoints",
-            resume_from=resume_from,
-            max_steps=max_steps,
-            wandb_enabled=True,
-        )
-        train(config)
-        ckpt_vol.commit()
-
-    print("All stages complete.")
+    pattern = f"stage{stage}_step*.pt"
+    matches = sorted(Path("/checkpoints").glob(pattern))
+    return str(matches[-1]) if matches else None
 
 
 @app.local_entrypoint()
@@ -97,6 +87,12 @@ def main(
     max_steps: int = 100_000,
 ):
     if stage == 0:
-        train_all_remote.remote(max_steps=max_steps)
+        # Train all 3 stages, each as a separate remote call so
+        # each stage gets its own full 24h timeout.
+        for s in (1, 2, 3):
+            print(f"\n{'=' * 60}")
+            print(f"  Stage {s}")
+            print(f"{'=' * 60}\n")
+            train_remote.remote(stage=s, max_steps=max_steps)
     else:
         train_remote.remote(stage=stage, resume_from=resume_from, max_steps=max_steps)
