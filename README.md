@@ -39,18 +39,21 @@ Run `uv run tropical --help` for full CLI options.
 
 ### Training on Modal (GPU)
 
-Requires `modal` (in dev dependencies: `uv sync --group dev`).
+Requires `modal` (in dev dependencies: `uv sync --extra dev`).
 
 ```bash
 # Upload local data/ to the Modal volume
-modal run upload_data_modal.py
+uv run modal run upload_data_modal.py
 
-# Train a single stage on an A100-80GB
-modal run train_modal.py --stage 1 --max-steps 50000
+# Train all 3 stages on an A100-80GB (auto-chains checkpoints)
+uv run modal run train_modal.py --max-steps 50000
+
+# Or train a single stage
+uv run modal run train_modal.py --stage 1 --max-steps 50000
 
 # Chain stages manually
-modal run train_modal.py --stage 2 --resume-from /checkpoints/stage1_step50000.pt
-modal run train_modal.py --stage 3 --resume-from /checkpoints/stage2_step50000.pt
+uv run modal run train_modal.py --stage 2 --resume-from /checkpoints/stage1_step50000.pt
+uv run modal run train_modal.py --stage 3 --resume-from /checkpoints/stage2_step50000.pt
 ```
 
 Data and checkpoints are persisted on Modal volumes (`tropical-data` and `tropical-checkpoints`), so checkpoint paths use `/data` and `/checkpoints` (the volume mount points).
