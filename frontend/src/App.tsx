@@ -11,6 +11,7 @@ import { TEPanel, createInitialTEState } from "@/components/TEPanel";
 import type { TEState } from "@/components/TEPanel";
 import { SequenceOutput } from "@/components/SequenceOutput";
 import { ApiStatus } from "@/components/ApiStatus";
+import { RiboNNPanel } from "@/components/RiboNNPanel";
 import { generateSequence } from "@/lib/api";
 import { validateProtein } from "@/lib/constants";
 
@@ -123,6 +124,7 @@ export default function App() {
                   loading={loading}
                   error={error}
                 />
+                <RiboNNPanel sequence={sequence} proteinSeq={cleaned.length > 0 ? cleaned : null} />
               </CardContent>
             </Card>
           </div>

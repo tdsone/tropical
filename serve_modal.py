@@ -40,7 +40,6 @@ class Inference:
         # Find latest stage-3 checkpoint
         matches = sorted(Path("/checkpoints").glob("stage3_step*.pt"))
         if not matches:
-            # Fall back to any available checkpoint
             matches = sorted(Path("/checkpoints").glob("stage*_step*.pt"))
         if not matches:
             raise FileNotFoundError("No checkpoints found in /checkpoints")
@@ -61,45 +60,58 @@ class Inference:
 
         print(f"Model loaded on {self.device} from {ckpt_path}")
 
-    @modal.fastapi_endpoint(method="GET")
-    def health(self):
-        return {"status": "ok", "device": str(self.device)}
+    @modal.asgi_app()
+    def web(self):
+        from fastapi import FastAPI
+        from fastapi.middleware.cors import CORSMiddleware
 
-    @modal.fastapi_endpoint(method="GET")
-    def te_columns(self):
-        from tropical.config import TE_COLUMNS
-
-        return {"columns": TE_COLUMNS}
-
-    @modal.fastapi_endpoint(method="POST")
-    def generate(self, request: dict):
-        import torch
-
-        from tropical.generate import generate as run_generate
-
-        protein_seq = request.get("protein_seq")
-        te_values_list = request.get("te_values")
-        te_mask_list = request.get("te_mask")
-        max_length = request.get("max_length", 2048)
-        temperature = request.get("temperature", 1.0)
-        top_k = request.get("top_k")
-
-        te_values = None
-        te_mask = None
-        if te_values_list is not None and te_mask_list is not None:
-            te_values = torch.tensor(te_values_list, dtype=torch.float32)
-            te_mask = torch.tensor(te_mask_list, dtype=torch.float32)
-
-        sequence = run_generate(
-            model=self.model,
-            nt_tok=self.nt_tok,
-            aa_tok=self.aa_tok,
-            protein_seq=protein_seq,
-            te_values=te_values,
-            te_mask=te_mask,
-            max_length=max_length,
-            temperature=temperature,
-            top_k=top_k,
+        api = FastAPI()
+        api.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_methods=["*"],
+            allow_headers=["*"],
         )
 
-        return {"sequence": sequence, "length": len(sequence)}
+        @api.get("/health")
+        def health():
+            return {"status": "ok", "device": str(self.device)}
+
+        @api.get("/te-columns")
+        def te_columns():
+            from tropical.config import TE_COLUMNS
+            return {"columns": TE_COLUMNS}
+
+        @api.post("/generate")
+        def generate(request: dict):
+            import torch
+            from tropical.generate import generate as run_generate
+
+            protein_seq = request.get("protein_seq")
+            te_values_list = request.get("te_values")
+            te_mask_list = request.get("te_mask")
+            max_length = request.get("max_length", 2048)
+            temperature = request.get("temperature", 1.0)
+            top_k = request.get("top_k")
+
+            te_values = None
+            te_mask = None
+            if te_values_list is not None and te_mask_list is not None:
+                te_values = torch.tensor(te_values_list, dtype=torch.float32)
+                te_mask = torch.tensor(te_mask_list, dtype=torch.float32)
+
+            sequence = run_generate(
+                model=self.model,
+                nt_tok=self.nt_tok,
+                aa_tok=self.aa_tok,
+                protein_seq=protein_seq,
+                te_values=te_values,
+                te_mask=te_mask,
+                max_length=max_length,
+                temperature=temperature,
+                top_k=top_k,
+            )
+
+            return {"sequence": sequence, "length": len(sequence)}
+
+        return api
